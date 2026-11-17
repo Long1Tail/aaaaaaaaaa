@@ -1,0 +1,167 @@
+
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>GTSDB Detector</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #111827;
+            color: white;
+            max-width: 750px;
+            margin: 70px auto;
+            padding: 20px;
+        }
+        .drop {
+            border: 2px dashed #64748b;
+            border-radius: 15px;
+            padding: 65px 20px;
+            text-align: center;
+            cursor: pointer;
+        }
+        .drop.active { border-color: #22c55e; }
+        button {
+            margin-top: 20px;
+            padding: 13px 25px;
+            border: 0;
+            border-radius: 8px;
+            background: #22c55e;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:disabled { opacity: .5; }
+        li { margin: 10px 0; }
+        #status { margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <h1>Traffic Sign Detector</h1>
+    <p>YOLOv8s · 1280 px · GTSDB</p>
+
+    <div class="drop" id="drop">
+        Перетащите изображения сюда
+        <br><br>
+        или нажмите для выбора
+    </div>
+
+    <input id="files" type="file"
+           accept="image/*" multiple hidden>
+
+    <ul id="list"></ul>
+
+    <button id="send" disabled>
+        Обработать изображения
+    </button>
+
+    <div id="status"></div>
+
+    <script>
+        const drop = document.getElementById("drop");
+        const input = document.getElementById("files");
+        const list = document.getElementById("list");
+        const send = document.getElementById("send");
+        const status = document.getElementById("status");
+
+        let selected = [];
+
+        function addFiles(files) {
+            const valid = Array.from(files).filter(
+                f => f.type.startsWith("image/")
+            );
+
+            selected.push(...valid);
+            selected = [...new Map(
+                selected.map(f => [
+                    `${f.name}-${f.size}-${f.lastModified}`, f
+                ])
+            ).values()];
+
+            render();
+        }
+
+        function render() {
+            list.innerHTML = "";
+
+            selected.forEach((file, index) => {
+                const li = document.createElement("li");
+                li.textContent =
+                    `${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB) `;
+
+                const remove = document.createElement("button");
+                remove.textContent = "Удалить";
+                remove.onclick = () => {
+                    selected.splice(index, 1);
+                    render();
+                };
+
+                li.appendChild(remove);
+                list.appendChild(li);
+            });
+
+            send.disabled = selected.length === 0;
+        }
+
+        drop.onclick = () => input.click();
+
+        input.onchange = () => addFiles(input.files);
+
+        drop.ondragover = e => {
+            e.preventDefault();
+            drop.classList.add("active");
+        };
+
+        drop.ondragleave = () => {
+            drop.classList.remove("active");
+        };
+
+        drop.ondrop = e => {
+            e.preventDefault();
+            drop.classList.remove("active");
+            addFiles(e.dataTransfer.files);
+        };
+
+        send.onclick = async () => {
+            if (!selected.length) return;
+
+            send.disabled = true;
+            status.textContent = "Обработка изображений...";
+
+            const data = new FormData();
+
+            selected.forEach(file => {
+                data.append("files", file);
+            });
+
+            try {
+                const response = await fetch("/api/process", {
+                    method: "POST",
+                    body: data
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || "Ошибка сервера");
+                }
+
+                const blob = await response.blob();
+                const url = URL.createObjectURL(blob);
+
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = "traffic-sign-results.zip";
+                a.click();
+
+                URL.revokeObjectURL(url);
+                status.textContent = "Обработка завершена! Архив скачивается.";
+
+            } catch (error) {
+                status.textContent = "Ошибка: " + error.message;
+            } finally {
+                send.disabled = false;
+            }
+        };
+    </script>
+</body>
+</html>

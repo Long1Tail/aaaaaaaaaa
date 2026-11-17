@@ -1,0 +1,33 @@
+
+services:
+
+  frontend:
+    build: ./frontend
+    container_name: traffic-frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    container_name: traffic-backend
+    environment:
+      INFERENCE_URL: http://inference:8001
+    depends_on:
+      - inference
+    expose:
+      - "8000"
+    restart: unless-stopped
+
+  inference:
+    build: ./inference
+    container_name: traffic-inference
+    command: ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8001"]
+    volumes:
+      - ./models:/models:ro
+    expose:
+      - "8001"
+    gpus: all
+    restart: unless-stopped
